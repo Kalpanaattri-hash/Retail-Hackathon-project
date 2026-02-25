@@ -1,0 +1,47 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: sales-chatbot-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: salesdb
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    health_check:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: sales-chatbot-api
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      AWS_REGION: us-east-1
+      BEDROCK_MODEL_ID: anthropic.claude-3-sonnet-20240229-v1:0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: salesdb
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_SSL_MODE: disable
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: >
+      sh -c "python init_db.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  postgres_data:

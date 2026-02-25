@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.production
+.env.development
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# AWS Credentials
+.aws/
+aws-credentials.json
+
+# Database Files (contains real data)
+*.db
+*.sqlite
+*.sqlite3
+sales_analytics.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build Outputs
+dist/
+build/
+.next/
+.vercel/
+.parcel-cache/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Coverage
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+
+# Temporary Files
+*.tmp
+*.temp
+.cache/
