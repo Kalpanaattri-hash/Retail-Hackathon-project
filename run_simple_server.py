@@ -1,15 +1,52 @@
 #!/usr/bin/env python3
 import json
-import sqlite3
-from datetime import datetime
-from pathlib import Path
+import os
 from wsgiref.simple_server import make_server
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv('.env.local')
 
 class ChatServer:
     def __init__(self):
-        self.db_path = Path(__file__).parent / "sales_analytics.db"
+        # RDS-only configuration
+        self.db_host = os.getenv('DB_HOST')
+        self.db_port = int(os.getenv('DB_PORT', 5432))
+        self.db_name = os.getenv('DB_NAME')
+        self.db_user = os.getenv('DB_USER', 'postgres')
+        self.db_password = os.getenv('DB_PASSWORD')
+        self.db_ssl_mode = os.getenv('DB_SSL_MODE', 'require')
+        self.table_name = 'olist_master_sales'
         self.history = []
+
+        if not all([self.db_host, self.db_name, self.db_user, self.db_password]):
+            raise RuntimeError("RDS settings missing in .env.local. This server is configured for RDS only.")
+
+        print(f"✓ Using PostgreSQL (RDS): {self.db_host}/{self.db_name}")
+        print(f"✓ Using table: {self.table_name}")
+    
+    def get_connection(self):
+        """Get PostgreSQL connection."""
+        import psycopg2
+        return psycopg2.connect(
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
+            user=self.db_user,
+            password=self.db_password,
+            sslmode=self.db_ssl_mode,
+            connect_timeout=10
+        )
+    
+    def dict_from_cursor(self, cursor, fetchone=False):
+        """Convert PostgreSQL cursor results to dictionaries."""
+        col_names = [desc[0] for desc in cursor.description]
+        if fetchone:
+            row = cursor.fetchone()
+            return dict(zip(col_names, row)) if row else None
+        else:
+            rows = cursor.fetchall()
+            return [dict(zip(col_names, row)) for row in rows]
     
     def __call__(self, environ, start_response):
         path = environ.get('PATH_INFO', '/')
@@ -27,7 +64,12 @@ class ChatServer:
             return self.not_found(start_response)
     
     def health(self, start_response):
-        response = {"status": "ok", "service": "Sales Analytics Chatbot"}
+        response = {
+            "status": "ok",
+            "service": "Sales Analytics Chatbot",
+            "database": "RDS PostgreSQL",
+            "table": self.table_name,
+        }
         text = json.dumps(response)
         start_response('200 OK', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
         return [text.encode()]
@@ -73,44 +115,43 @@ class ChatServer:
         q_lower = question.lower()
         
         try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             if 'total' in q_lower and ('sales' in q_lower or 'revenue' in q_lower):
-                sql = "SELECT SUM(revenue) as total, COUNT(*) as count FROM sales"
+                sql = f"SELECT SUM(order_sale_value) as total, COUNT(*) as count FROM {self.table_name}"
                 cursor.execute(sql)
-                row = dict(cursor.fetchone())
+                row = self.dict_from_cursor(cursor, fetchone=True)
                 total = row.get('total', 0) or 0
                 count = row.get('count', 0) or 0
                 answer = f"Total sales: ${total:,.2f} from {count} transactions"
                 data = [row]
             
             elif 'region' in q_lower:
-                sql = "SELECT region, SUM(revenue) as revenue, COUNT(*) as count FROM sales GROUP BY region ORDER BY revenue DESC"
+                sql = f"SELECT customer_state as region, SUM(order_sale_value) as revenue, COUNT(*) as count FROM {self.table_name} GROUP BY customer_state ORDER BY revenue DESC LIMIT 10"
                 cursor.execute(sql)
-                rows = [dict(r) for r in cursor.fetchall()]
+                rows = self.dict_from_cursor(cursor)
                 answer = "Sales by region: " + ", ".join([f"{r['region']}: ${r['revenue']:,.2f}" for r in rows])
                 data = rows
             
             elif 'product' in q_lower and 'top' in q_lower:
-                sql = "SELECT p.name, SUM(s.revenue) as revenue FROM sales s JOIN products p ON s.product_id = p.id GROUP BY p.name ORDER BY revenue DESC LIMIT 5"
+                sql = f"SELECT product_category_name as name, SUM(order_sale_value) as revenue FROM {self.table_name} GROUP BY product_category_name ORDER BY revenue DESC LIMIT 5"
                 cursor.execute(sql)
-                rows = [dict(r) for r in cursor.fetchall()]
+                rows = self.dict_from_cursor(cursor)
                 answer = "Top products: " + ", ".join([f"{r['name']}: ${r['revenue']:,.2f}" for r in rows])
                 data = rows
             
             elif 'trend' in q_lower:
-                sql = "SELECT sale_date, SUM(revenue) as revenue FROM sales GROUP BY sale_date ORDER BY sale_date DESC LIMIT 7"
+                sql = f"SELECT order_date, SUM(order_sale_value) as revenue FROM {self.table_name} GROUP BY order_date ORDER BY order_date DESC LIMIT 7"
                 cursor.execute(sql)
-                rows = [dict(r) for r in cursor.fetchall()]
+                rows = self.dict_from_cursor(cursor)
                 answer = f"Sales trend for last 7 days: {len(rows)} records"
                 data = rows
             
             else:
-                sql = "SELECT COUNT(*) as count, SUM(revenue) as total, AVG(revenue) as avg FROM sales"
+                sql = f"SELECT COUNT(*) as count, SUM(order_sale_value) as total, AVG(order_sale_value) as avg FROM {self.table_name}"
                 cursor.execute(sql)
-                row = dict(cursor.fetchone())
+                row = self.dict_from_cursor(cursor, fetchone=True)
                 answer = f"Database summary: {row['count']} sales, ${row['total']:,.2f} total revenue"
                 data = [row]
             

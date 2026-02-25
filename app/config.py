@@ -18,12 +18,15 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
 
+    # SQLite (fallback)
     database_url: str = "sqlite:///./sales_analytics.db"
-    db_host: str = "localhost"
+    
+    # PostgreSQL / RDS (optional)
+    db_host: Optional[str] = None
     db_port: int = 5432
     db_name: str = "salesdb"
     db_user: str = "postgres"
-    db_password: SecretStr = Field(default=SecretStr("postgres"))
+    db_password: Optional[SecretStr] = None
     db_ssl_mode: str = "require"
 
     allowed_tables: str = "sales,products,customers"
@@ -32,6 +35,11 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_uri(self) -> str:
+        # If RDS details provided, use PostgreSQL
+        if self.db_host and self.db_password:
+            password = self.db_password.get_secret_value() if isinstance(self.db_password, SecretStr) else self.db_password
+            return f"postgresql+pg8000://{self.db_user}:{quote_plus(password)}@{self.db_host}:{self.db_port}/{self.db_name}?ssl_mode={self.db_ssl_mode}"
+        # Otherwise fallback to SQLite
         return self.database_url
 
     @property
