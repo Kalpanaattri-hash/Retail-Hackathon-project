@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
+import base64
+import io
 import json
 import os
 from wsgiref.simple_server import make_server
 from dotenv import load_dotenv
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+matplotlib.use('Agg')
 
 # Load environment variables
 load_dotenv('.env.local')
@@ -58,6 +65,12 @@ class ChatServer:
             content_length = int(environ.get('CONTENT_LENGTH', 0))
             body = environ['wsgi.input'].read(content_length).decode()
             return self.chat(body, start_response)
+        elif path == '/dashboard/options' and method == 'GET':
+            return self.dashboard_options(start_response)
+        elif path == '/dashboard/charts' and method == 'POST':
+            content_length = int(environ.get('CONTENT_LENGTH', 0))
+            body = environ['wsgi.input'].read(content_length).decode()
+            return self.dashboard_charts(body, start_response)
         elif method == 'OPTIONS':
             return self.cors_preflight(start_response)
         else:
@@ -109,6 +122,135 @@ class ChatServer:
             response = {"error": str(e)}
             text = json.dumps(response)
             start_response('400 Bad Request', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
+            return [text.encode()]
+
+    def dashboard_options(self, start_response):
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(f"SELECT DISTINCT customer_gender FROM {self.table_name} WHERE customer_gender IS NOT NULL ORDER BY customer_gender")
+            customer_genders = [row[0] for row in cursor.fetchall() if row[0]]
+
+            cursor.execute(f"SELECT DISTINCT customer_state FROM {self.table_name} WHERE customer_state IS NOT NULL ORDER BY customer_state")
+            customer_states = [row[0] for row in cursor.fetchall() if row[0]]
+
+            cursor.execute(f"SELECT DISTINCT product_category_name FROM {self.table_name} WHERE product_category_name IS NOT NULL ORDER BY product_category_name")
+            product_categories = [row[0] for row in cursor.fetchall() if row[0]]
+
+            conn.close()
+
+            response = {
+                "customer_genders": customer_genders,
+                "customer_states": customer_states,
+                "product_categories": product_categories,
+            }
+            text = json.dumps(response)
+            start_response('200 OK', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
+            return [text.encode()]
+        except Exception as e:
+            response = {"error": str(e)}
+            text = json.dumps(response)
+            start_response('500 Internal Server Error', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
+            return [text.encode()]
+
+    def dashboard_charts(self, body, start_response):
+        try:
+            payload = json.loads(body or '{}')
+            customer_genders = payload.get('customer_genders', [])
+            customer_states = payload.get('customer_states', [])
+            product_categories = payload.get('product_categories', [])
+            selected_dimensions = payload.get('selected_dimensions', ['customer_gender', 'customer_state', 'product_category_name'])
+            measure = payload.get('measure', 'sales_value')
+            measure_column = 'order_sale_value' if measure == 'sales_value' else 'order_items_qty'
+
+            conditions = []
+            params = []
+
+            if customer_genders:
+                placeholders = ','.join(['%s'] * len(customer_genders))
+                conditions.append(f"customer_gender IN ({placeholders})")
+                params.extend(customer_genders)
+
+            if customer_states:
+                placeholders = ','.join(['%s'] * len(customer_states))
+                conditions.append(f"customer_state IN ({placeholders})")
+                params.extend(customer_states)
+
+            if product_categories:
+                placeholders = ','.join(['%s'] * len(product_categories))
+                conditions.append(f"product_category_name IN ({placeholders})")
+                params.extend(product_categories)
+
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ''
+
+            labels_map = {
+                'customer_gender': 'Customer Gender',
+                'customer_state': 'Customer State',
+                'product_category_name': 'Product Category',
+            }
+
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            charts = []
+
+            sns.set_theme(style='whitegrid')
+
+            for dimension in selected_dimensions:
+                if dimension not in labels_map:
+                    continue
+
+                query = f"""
+                    SELECT {dimension} AS label, SUM({measure_column}) AS metric
+                    FROM {self.table_name}
+                    {where_clause}
+                    {'AND' if where_clause else 'WHERE'} {dimension} IS NOT NULL
+                    GROUP BY {dimension}
+                    ORDER BY metric DESC
+                    LIMIT 12
+                """
+
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                if not rows:
+                    continue
+
+                labels = [str(r[0]) for r in rows]
+                values = [float(r[1]) for r in rows]
+
+                fig, ax = plt.subplots(figsize=(8, 4.5))
+                sns.barplot(x=labels, y=values, ax=ax, color='#2563eb')
+                metric_label = 'Sales Value' if measure == 'sales_value' else 'Sales Quantity'
+                ax.set_title(f"{labels_map[dimension]} by {metric_label}")
+                ax.set_xlabel(labels_map[dimension])
+                ax.set_ylabel(metric_label)
+                ax.tick_params(axis='x', rotation=30)
+                fig.tight_layout()
+
+                buffer = io.BytesIO()
+                fig.savefig(buffer, format='png', dpi=120)
+                plt.close(fig)
+                buffer.seek(0)
+
+                charts.append({
+                    'dimension': dimension,
+                    'title': ax.get_title(),
+                    'image_base64': base64.b64encode(buffer.read()).decode('utf-8')
+                })
+
+            conn.close()
+
+            response = {
+                'measure': measure,
+                'charts': charts
+            }
+            text = json.dumps(response)
+            start_response('200 OK', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
+            return [text.encode()]
+        except Exception as e:
+            response = {"error": str(e)}
+            text = json.dumps(response)
+            start_response('500 Internal Server Error', [('Content-Type', 'application/json'), ('Access-Control-Allow-Origin', '*')])
             return [text.encode()]
     
     def _process(self, question):

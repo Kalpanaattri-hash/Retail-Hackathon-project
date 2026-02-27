@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ChatBox } from './components/ChatBox';
+import { SalesDashboard } from './components/SalesDashboard';
 import './index.css';
 
 type FeatureKey = 'sales-analytics' | 'social-media' | 'recommendations' | 'visual-styling';
@@ -178,12 +179,7 @@ function App() {
             selectedSalesTab === 'qna-chatbot' ? (
               <ChatBox />
             ) : (
-              <div className="flex h-full items-center justify-center bg-slate-50">
-                <div className="text-center">
-                  <h2 className="text-3xl font-semibold text-slate-800">Sales Analytic</h2>
-                  <p className="mt-2 text-slate-500">Blank for now</p>
-                </div>
-              </div>
+              <SalesDashboard />
             )
           ) : (
             <div className="flex h-full items-center justify-center bg-slate-50">

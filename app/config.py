@@ -2,14 +2,16 @@ from functools import lru_cache
 from typing import Optional, Set
 from urllib.parse import quote_plus
 
-from pydantic import BaseSettings, Field, SecretStr
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env.local",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     app_name: str = "Sales Analytics Chatbot"
     app_env: str = "development"
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
         # If RDS details provided, use PostgreSQL
         if self.db_host and self.db_password:
             password = self.db_password.get_secret_value() if isinstance(self.db_password, SecretStr) else self.db_password
-            return f"postgresql+pg8000://{self.db_user}:{quote_plus(password)}@{self.db_host}:{self.db_port}/{self.db_name}?ssl_mode={self.db_ssl_mode}"
+            return f"postgresql+psycopg2://{self.db_user}:{quote_plus(password)}@{self.db_host}:{self.db_port}/{self.db_name}?sslmode={self.db_ssl_mode}"
         # Otherwise fallback to SQLite
         return self.database_url
 

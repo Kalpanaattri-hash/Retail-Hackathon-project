@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -17,3 +17,30 @@ class ChatResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
+
+
+class DashboardOptionsResponse(BaseModel):
+    customer_genders: List[str]
+    customer_states: List[str]
+    product_categories: List[str]
+
+
+class DashboardChartRequest(BaseModel):
+    customer_genders: List[str] = Field(default_factory=list)
+    customer_states: List[str] = Field(default_factory=list)
+    product_categories: List[str] = Field(default_factory=list)
+    selected_dimensions: List[Literal["customer_gender", "customer_state", "product_category_name"]] = Field(
+        default_factory=lambda: ["customer_gender", "customer_state", "product_category_name"]
+    )
+    measure: Literal["sales_value", "sales_quantity"]
+
+
+class DashboardChart(BaseModel):
+    dimension: str
+    title: str
+    image_base64: str
+
+
+class DashboardChartResponse(BaseModel):
+    measure: str
+    charts: List[DashboardChart]

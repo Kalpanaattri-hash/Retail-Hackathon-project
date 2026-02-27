@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.database import SessionLocal
 from app.routers.chat_router import router as chat_router
+from app.routers.dashboard_router import router as dashboard_router
 from app.services.analytics_service import AnalyticsService, ConversationMemory
 from app.services.bedrock_service import BedrockService
 from app.services.sql_generator import SQLGenerator
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/health")
