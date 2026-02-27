@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.services.bedrock_service import BedrockService, BedrockServiceError
 from app.services.sql_generator import SQLGenerationError, SQLGenerator
-from app.utils.prompt_templates import business_summary_prompt
+from app.utils.prompt_templates import business_summary_prompt, follow_up_questions_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,14 @@ class AnalyticsService:
             generated = self.sql_generator.generate_sql(question, self.memory.get_recent())
             rows = self._execute_query(generated.sql)
             answer = self._summarize(question, generated.sql, rows)
+            follow_up_questions = self._generate_follow_up_questions(question, answer, rows)
             self.memory.add(question, generated.sql)
 
             return {
                 "answer": answer,
                 "generated_sql": generated.sql,
                 "data_preview": rows[:20],
+                "follow_up_questions": follow_up_questions,
             }
 
         except (SQLGenerationError, BedrockServiceError) as exc:
@@ -105,3 +107,61 @@ class AnalyticsService:
             else:
                 serialized[key] = value
         return serialized
+
+    def _generate_follow_up_questions(self, question: str, answer: str, rows: list[dict]) -> list[str]:
+        system_prompt, user_prompt = follow_up_questions_prompt(question, answer, rows)
+
+        try:
+            raw_output = self.bedrock_service.generate_text(
+                system_prompt,
+                user_prompt,
+                temperature=0.3,
+                max_tokens=180,
+            )
+            parsed = json.loads(raw_output)
+
+            if isinstance(parsed, dict):
+                candidates = parsed.get("questions", [])
+            elif isinstance(parsed, list):
+                candidates = parsed
+            else:
+                candidates = []
+
+            cleaned: list[str] = []
+            for item in candidates:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text and text not in cleaned:
+                        cleaned.append(text)
+                if len(cleaned) == 3:
+                    break
+
+            if len(cleaned) >= 2:
+                return cleaned
+        except (BedrockServiceError, json.JSONDecodeError, TypeError, ValueError):
+            logger.debug("Using fallback follow-up questions", exc_info=True)
+
+        return self._fallback_follow_up_questions(question)
+
+    def _fallback_follow_up_questions(self, question: str) -> list[str]:
+        question_lower = question.lower()
+
+        if "region" in question_lower:
+            return [
+                "Can you show this trend month by month for each region?",
+                "Which region had the highest growth versus last quarter?",
+                "What is the contribution percentage of each region?",
+            ]
+
+        if "product" in question_lower or "category" in question_lower:
+            return [
+                "Which products contributed most to this result?",
+                "How did each product category perform in the previous quarter?",
+                "Can you show the top 5 products by revenue with quantity sold?",
+            ]
+
+        return [
+            "Can you break this down by product category?",
+            "How does this compare with the previous quarter?",
+            "Can you show the monthly trend for this metric?",
+        ]

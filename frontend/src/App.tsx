@@ -119,32 +119,36 @@ function App() {
 
                 {isSalesAnalytics && isSalesExpanded && (
                   <ul className="mt-3 ml-11 space-y-2 text-sm list-disc text-indigo-100/90">
-                    <li>
+                    <li className="list-none">
                       <button
                         type="button"
                         onClick={() => {
                           setActiveFeature('sales-analytics');
                           setSelectedSalesTab('qna-chatbot');
                         }}
-                        className={`w-full text-left transition-colors hover:text-white ${
-                          selectedSalesTab === 'qna-chatbot' ? 'font-semibold text-white' : ''
+                        className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                          selectedSalesTab === 'qna-chatbot'
+                            ? 'border-indigo-400/50 bg-indigo-500/20 font-semibold text-white'
+                            : 'border-slate-700/60 bg-slate-900/60 text-slate-200 hover:border-slate-500 hover:text-white'
                         }`}
                       >
                         QnA Chatbot
                       </button>
                     </li>
-                    <li>
+                    <li className="list-none">
                       <button
                         type="button"
                         onClick={() => {
                           setActiveFeature('sales-analytics');
                           setSelectedSalesTab('sales-analytic');
                         }}
-                        className={`w-full text-left transition-colors hover:text-white ${
-                          selectedSalesTab === 'sales-analytic' ? 'font-semibold text-white' : ''
+                        className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                          selectedSalesTab === 'sales-analytic'
+                            ? 'border-indigo-400/50 bg-indigo-500/20 font-semibold text-white'
+                            : 'border-slate-700/60 bg-slate-900/60 text-slate-200 hover:border-slate-500 hover:text-white'
                         }`}
                       >
-                        Sales Analytic
+                        Sales Dashboard
                       </button>
                     </li>
                   </ul>

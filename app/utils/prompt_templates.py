@@ -80,3 +80,34 @@ Return:
 """.strip()
 
     return system_prompt, user_prompt
+
+
+def follow_up_questions_prompt(question: str, answer: str, rows: list[dict]) -> tuple[str, str]:
+    system_prompt = """
+You are a sales analytics assistant that proposes next user questions.
+Return only valid JSON with a single key: questions.
+The value must be an array containing 2 or 3 short, specific follow-up questions.
+Do not include markdown, numbering, or explanations.
+""".strip()
+
+    user_prompt = f"""
+Original user question:
+{question}
+
+Assistant answer:
+{answer}
+
+Result rows sample (JSON):
+{rows[:5]}
+
+Output example:
+{{
+    "questions": [
+        "Which product category contributed most to this result?",
+        "How does this compare with the previous quarter?",
+        "Which region changed the most month over month?"
+    ]
+}}
+""".strip()
+
+    return system_prompt, user_prompt

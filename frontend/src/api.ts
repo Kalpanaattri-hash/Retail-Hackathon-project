@@ -8,6 +8,7 @@ export interface ChatResponse {
   answer: string;
   generated_sql: string;
   data_preview: Record<string, unknown>[];
+  follow_up_questions?: string[];
 }
 
 class APIClient {

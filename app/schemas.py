@@ -11,6 +11,7 @@ class ChatResponse(BaseModel):
     answer: str
     generated_sql: str
     data_preview: List[Dict]
+    follow_up_questions: List[str] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):

@@ -8,6 +8,7 @@ interface Message {
   content: string;
   sql?: string;
   data?: Record<string, unknown>[];
+  followUpQuestions?: string[];
   error?: string;
   timestamp: Date;
 }
@@ -35,15 +36,41 @@ export const ChatBox: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const getFallbackFollowUps = (questionText: string): string[] => {
+    const questionLower = questionText.toLowerCase();
+
+    if (questionLower.includes('region')) {
+      return [
+        'Show region-wise trend for the last 6 months',
+        'Which region grew the fastest compared to previous quarter?',
+        'What percentage of total revenue comes from each region?',
+      ];
+    }
+
+    if (questionLower.includes('product') || questionLower.includes('category')) {
+      return [
+        'Which products contributed most to this result?',
+        'How did each product category perform in the previous quarter?',
+        'Show top 5 products by revenue and quantity sold',
+      ];
+    }
+
+    return [
+      'Can you break this down by product category?',
+      'How does this compare with the previous quarter?',
+      'Can you show the monthly trend for this metric?',
+    ];
+  };
+
+  const sendQuestion = async (questionText: string) => {
+    const trimmedQuestion = questionText.trim();
+    if (!trimmedQuestion || loading) return;
 
     setError(null);
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: trimmedQuestion,
       timestamp: new Date(),
     };
 
@@ -52,7 +79,11 @@ export const ChatBox: React.FC = () => {
     setLoading(true);
 
     try {
-      const response: ChatResponse = await apiClient.askQuestion(input);
+      const response: ChatResponse = await apiClient.askQuestion(trimmedQuestion);
+      const followUpQuestions =
+        response.follow_up_questions && response.follow_up_questions.length >= 2
+          ? response.follow_up_questions.slice(0, 3)
+          : getFallbackFollowUps(trimmedQuestion);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -60,6 +91,7 @@ export const ChatBox: React.FC = () => {
         content: response.answer,
         sql: response.generated_sql,
         data: response.data_preview,
+        followUpQuestions,
         timestamp: new Date(),
       };
 
@@ -84,6 +116,15 @@ export const ChatBox: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendQuestion(input);
+  };
+
+  const handleSuggestionClick = async (suggestion: string) => {
+    await sendQuestion(suggestion);
   };
 
   return (
@@ -165,6 +206,25 @@ export const ChatBox: React.FC = () => {
                   </div>
                 )}
 
+                {msg.role === 'assistant' && msg.followUpQuestions && msg.followUpQuestions.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-xs font-semibold text-gray-600">Suggested questions:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {msg.followUpQuestions.slice(0, 3).map((suggestion, index) => (
+                        <button
+                          key={`${msg.id}-suggestion-${index}`}
+                          type="button"
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          disabled={loading}
+                          className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <p className="mt-1 text-xs opacity-70">
                   {msg.timestamp.toLocaleTimeString()}
                 </p>
@@ -202,7 +262,7 @@ export const ChatBox: React.FC = () => {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about sales data... (e.g., Total sales last month?)"
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm placeholder-gray-500 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-gray-100"
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-gray-100 disabled:text-gray-500"
           />
           <button
             type="submit"
